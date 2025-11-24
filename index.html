@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Courtify | Book. Play. Repeat.</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* minimal inline to ensure UI looks fine if your style.css is missing */
+    body { font-family: Inter, Arial, sans-serif; background:#f7fafc; margin:0; padding:20px; color:#0f172a; }
+    .container { max-width:960px; margin:0 auto; }
+    .card { background:#fff; padding:18px; border-radius:10px; box-shadow:0 6px 18px rgba(20,30,53,.06); margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:1fr 360px; gap:16px; }
+    .service-item { padding:12px; border-radius:8px; border:1px solid #eef2ff; margin-bottom:10px; cursor:pointer; }
+    .service-item.selected { background:#eef2ff; border-color:#93c5fd; }
+    .muted { color:#6b7280; font-size:.95rem; }
+    button { padding:8px 10px; border-radius:8px; border:none; background:#2563eb; color:#fff; cursor:pointer; }
+    input, select { padding:8px;border-radius:6px;border:1px solid #e6eef8;width:100%;box-sizing:border-box }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Courtify</h1>
+
+    <div class="card grid">
+      <div class="card" style="padding:12px;margin-bottom:10px;border-radius:8px;box-shadow:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:600">Loyalty Perk Points</div>
+            <div class="muted" style="font-size:0.9rem">Your accumulated loyalty points</div>
+          </div>
+          <div>
+            <div id="loyaltyPoints" style="font-size:1.2rem;font-weight:700">0 pts</div>
+            <button id="refreshLoyalty" style="margin-top:6px;padding:6px 8px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;cursor:pointer">Refresh</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h2>Services</h2>
+        <div id="servicesList" class="muted">Loading services…</div>
+
+        <h3 style="margin-top:18px">Filters</h3>
+        <label>Preferred location</label>
+        <input id="preferredLocation" placeholder="e.g., Makati" />
+
+        <label>Indoor / Outdoor</label>
+        <select id="indoorOutdoor"><option value="any">Any</option><option value="indoor">Indoor</option><option value="outdoor">Outdoor</option></select>
+
+        <h3 style="margin-top:18px">Find slots</h3>
+        <label>Date from</label>
+        <input id="dateFrom" type="date" />
+        <label>Date to</label>
+        <input id="dateTo" type="date" />
+        <label>Preferred time</label>
+        <input id="preferredTime" placeholder="e.g., 18:00" />
+        <div style="margin-top:8px">
+          <button id="searchSlots">Search slots</button>
+        </div>
+
+        <div id="availabilityCard" class="card" style="display:none;margin-top:12px"></div>
+
+        <div id="bookingCard" class="card" style="display:none;margin-top:12px">
+          <div id="bookingFormArea"></div>
+        </div>
+      </div>
+
+      <div>
+        <h3>Your bookings</h3>
+        <div id="bookingsList" class="muted">Loading…</div>
+      </div>
+    </div>
+
+    <div id="statusBar" class="muted" style="margin-top:8px"></div>
+  </div>
+
+<script>
+  // small utils
+  function $id(id) { return document.getElementById(id); }
+  function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  let selectedService = null;
+  let selectedSlot = null;
+  let finalPrice = null;
+
+  async function loadServices() {
+    try {
+      const r = await fetch("http://localhost:3000/api/services");
+      const j = await r.json();
+      if (!j.success) { $id("servicesList").textContent = "Failed to load services"; return; }
+      if (!Array.isArray(j.services) || j.services.length===0) {
+        $id("servicesList").innerHTML = "<div class='muted'>No services defined. Create some in admin.</div>";
+        return;
+      }
+      const html = j.services.map(s => {
+        return `<div class="service-item" data-id="${escapeHtml(s.id)}" data-name="${escapeHtml(s.name)}">
+          <strong>${escapeHtml(s.name)}</strong><div class="muted">${escapeHtml((s.units||[]).length)} units</div>
+        </div>`;
+      }).join("");
+      $id("servicesList").innerHTML = html;
+      document.querySelectorAll(".service-item").forEach(el=>{
+        el.addEventListener("click", ()=> {
+          document.querySelectorAll(".service-item").forEach(x=>x.classList.remove("selected"));
+          el.classList.add("selected");
+          selectedService = { id: el.dataset.id, name: el.dataset.name };
+        });
+      });
+    } catch (err) {
+      console.error(err);
+      $id("servicesList").textContent = "Failed to load services";
+    }
+  }
+
+  function mockAvailability(service, dateFrom, dateTo, preferredTime) {
+    // create demo slots if server not available
+    const out = { units: [] };
+    for (let i=1;i<=2;i++) {
+      const unit = { id: 'U'+i, name: `Court ${i}`, slots: [] };
+      for (let h=9; h<=20; h+=2) {
+        unit.slots.push({ time: (h < 10 ? '0'+h : h)+":00", price: 500 });
+      }
+      out.units.push(unit);
+    }
+    return out;
+  }
+
+  async function checkAvailability(e) {
+    const status = $id("statusBar");
+    const slotsArea = $id("availabilityCard");
+    const bookingCard = $id("bookingCard");
+    const dateFrom = $id("dateFrom").value;
+    const dateTo = $id("dateTo").value;
+    const preferredLocation = $id("preferredLocation").value;
+    const indoorOutdoor = $id("indoorOutdoor").value;
+    const preferredTime = $id("preferredTime").value;
+    if (!dateFrom || !dateTo) { status.textContent = "Please choose dateFrom and dateTo."; return; }
+
+    status.textContent = "Checking availability...";
+    slotsArea.innerHTML = "";
+    availabilityCard.style.display = "none";
+    bookingCard.style.display = "none";
+    selectedSlot = null;
+    finalPrice = null;
+
+    // Try server availability endpoint, otherwise create demo results
+    try {
+      const body = { preferredLocation, indoorOutdoor, sport: selectedService.name, dateFrom, dateTo, preferredTime };
+      const r = await fetch("/api/court/availability/check", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+      if (r.ok) {
+        const j = await r.json();
+        renderAvailability(j);
+      } else {
+        renderAvailability(mockAvailability(selectedService, dateFrom, dateTo, preferredTime));
+      }
+      status.textContent = "";
+    } catch (err) {
+      console.error(err);
+      renderAvailability(mockAvailability(selectedService, dateFrom, dateTo, preferredTime));
+      status.textContent = "";
+    }
+  }
+
+  function renderAvailability(av) {
+    const slotsArea = $id("availabilityCard");
+    if (!av || !Array.isArray(av.units)) {
+      slotsArea.innerHTML = "<div class='muted'>No availability</div>";
+      slotsArea.style.display = "block";
+      return;
+    }
+    const html = av.units.map(u=> {
+      return `<div style="padding:8px;border-bottom:1px solid #f1f5f9">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>${escapeHtml(u.name)}</strong></div>
+          <div class="muted">${u.slots.length} slots</div>
+        </div>
+        <div style="margin-top:8px">${u.slots.map(s => `<button data-unitid="${escapeHtml(u.id)}" data-unitname="${escapeHtml(u.name)}" data-time="${escapeHtml(s.time)}" data-price="${escapeHtml(s.price)}">${escapeHtml(s.time)} • ₱${escapeHtml(s.price)}</button>`).join(" ")}</div>
+      </div>`;
+    }).join("");
+    slotsArea.innerHTML = html;
+    slotsArea.style.display = "block";
+    // attach slot listeners
+    slotsArea.querySelectorAll("button").forEach(b=>{
+      b.addEventListener("click", ()=> {
+        selectedSlot = { unitId: b.dataset.unitid, unitName: b.dataset.unitname, time: b.dataset.time, price: Number(b.dataset.price) };
+        finalPrice = selectedSlot.price;
+        showBookingForm();
+      });
+    });
+  }
+
+  function showBookingForm() {
+    const bookingCard = $id("bookingCard");
+    const area = $id("bookingFormArea");
+    area.innerHTML = `
+      <div style="font-weight:700">${escapeHtml(selectedService.name || "Service")} — ${escapeHtml(selectedSlot.unitName || "")}</div>
+      <div style="margin-top:8px">${escapeHtml(selectedSlot.time)} • ₱${selectedSlot.price}</div>
+      <label style="margin-top:8px">Your name</label>
+      <input id="customerName" placeholder="Full name used for booking" />
+      <label>Email (optional)</label>
+      <input id="customerEmail" placeholder="you@example.com" />
+      <div style="margin-top:8px">
+        <button id="confirmBooking">Confirm booking</button>
+      </div>
+    `;
+    bookingCard.style.display = "block";
+    document.getElementById("confirmBooking").addEventListener("click", async ()=>{
+      const customerName = document.getElementById("customerName").value;
+      const customerEmail = document.getElementById("customerEmail").value;
+      const status = $id("statusBar");
+      if (!customerName) { status.textContent = "Please enter your name"; return; }
+      status.textContent = "Creating booking...";
+      try {
+        const body = {
+          serviceId: selectedService.id,
+          serviceName: selectedService.name,
+          unitId: selectedSlot.unitId,
+          unitName: selectedSlot.unitName,
+          date: $id("dateFrom").value,
+          time: selectedSlot.time,
+          price: finalPrice,
+          customerName,
+          customerEmail
+        };
+        const r = await fetch("/api/book", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+        const j = await r.json();
+        if (!r.ok) { status.textContent = "Failed to create booking: "+(j && j.error ? j.error : r.statusText); return; }
+        status.textContent = "Booking created!";
+        const bid = j && j.booking && j.booking.id;
+        // attempt to auto-confirm
+        if (bid) {
+          const rc = await fetch(`/api/book/${bid}/confirm`, { method:"POST" });
+          const jc = await rc.json();
+          if (rc.ok) {
+            status.textContent = "Booking confirmed!";
+            // loyalty message
+            const msg = document.createElement("div");
+            msg.style.marginTop = "8px";
+            msg.style.padding = "8px";
+            msg.style.borderRadius = "6px";
+            msg.style.background = "#ecfdf5";
+            msg.style.color = "#065f46";
+            msg.textContent = "Thank you — booking confirmed. You get 100 loyalty perk points.";
+            status.parentNode.appendChild(msg);
+
+            // refresh loyalty based on customerName field
+            refreshLoyaltyDisplay(customerName);
+          } else {
+            status.textContent = "Booking created but confirmation failed: " + (jc && jc.error ? jc.error : rc.statusText);
+          }
+        }
+        bookingCard.style.display = "none";
+        availabilityCard.style.display = "none";
+        await loadBookings();
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Server error creating booking";
+      }
+    });
+  };
+
+  // load stored bookings to show user their bookings
+  async function loadBookings() {
+    const bookingsList = $id("bookingsList");
+    bookingsList.innerHTML = "Loading…";
+    try {
+      const r = await fetch("http://localhost:3000/api/bookings");
+      const j = await r.json();
+      if (!j.success || !Array.isArray(j.bookings)) { bookingsList.innerHTML = "<div class='muted'>No bookings yet.</div>"; return; }
+      if (j.bookings.length === 0) { bookingsList.innerHTML = "<div class='muted'>No bookings yet.</div>"; return; }
+      const html = j.bookings.map(b => {
+        return `<div style="padding:10px;border-bottom:1px solid #f1f5f9">
+    
+          <div><strong>${escapeHtml(b.serviceName || "Service")}</strong> — ${escapeHtml(b.unitName||"")}</div>
+          <div class="muted">${escapeHtml(b.date)} ${escapeHtml(b.time)} • ${escapeHtml(b.customerName || "")} • ${b.status || ""}</div>
+          <div class="muted">Price: ${b.price != null ? "₱"+b.price : "—"} ${b.couponCode ? " • Coupon: "+escapeHtml(b.couponCode) : ""}</div>
+        </div>`;
+      }).join("");
+      bookingsList.innerHTML = html;
+    } catch (err) {
+      console.error(err);
+      bookingsList.innerHTML = "<div class='muted'>Failed to load bookings</div>";
+    }
+  }
+
+  // helper: fetch loyalty points
+  async function refreshLoyaltyDisplay(name) {
+    try {
+      const r = await fetch("http://localhost:3000/api/loyalty?customerName=test");
+      const j = await r.json();
+      if (r.ok && j.success) {
+        document.getElementById("loyaltyPoints").textContent = j.points + " pts";
+      }
+    } catch (e) {
+      console.error("refreshLoyaltyDisplay error", e);
+    }
+  }
+
+  // init
+  (async function init(){
+    await loadServices();
+    await loadBookings();
+
+    document.getElementById('refreshLoyalty').addEventListener('click', async ()=>{
+      const inputName = prompt('Enter your name to fetch loyalty points (exact customer name used in bookings):');
+      if (inputName) await refreshLoyaltyDisplay(inputName);
+    });
+
+  })();
+
+</script>
+</body>
+</html>
