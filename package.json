@@ -1,0 +1,16 @@
+{
+  "name": "courtify-booking",
+  "version": "1.0.0",
+  "description": "Courtify Booking - Real-time Court Availability Checker",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "uuid": "^13.0.0"
+  }
+}

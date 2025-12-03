@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Courtify | Book. Play. Repeat.</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* minimal inline to ensure UI looks fine if style.css is missing */
+    body { font-family: Inter, Arial, sans-serif; background:#f7fafc; margin:0; padding:20px; color:#0f172a; }
+    .container { max-width:960px; margin:0 auto; }
+    .card { background:#fff; padding:18px; border-radius:10px; box-shadow:0 6px 18px rgba(20,30,53,0.06); margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:1fr 360px; gap:16px; }
+    .service-item { padding:12px; border-radius:8px; border:1px solid #eef2ff; margin-bottom:10px; cursor:pointer; }
+    .service-item.selected { background:#eef2ff; border-color:#93c5fd; }
+    .muted { color:#6b7280; font-size:.95rem; }
+    ul.slots { list-style:none; padding:0; margin:0; }
+    ul.slots li { display:inline-block; margin:6px; }
+    .slot-btn { padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; background:white; cursor:pointer; }
+    .slot-btn.selected { background:#1d4ed8; color:white; border-color:#1d4ed8; }
+    .btn { padding:10px 14px; border-radius:8px; border:0; background:#042d67; color:white; cursor:pointer; }
+    .btn.secondary { background:#111827; }
+    .btn.green { background:#10b981; }
+    label { display:block; margin-top:8px; font-weight:600; }
+    input, select { width:100%; padding:8px; margin-top:6px; box-sizing:border-box; border:1px solid #e6eefb; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Courtify</h1>
+
+    <div class="card grid">
+      <div>
+        <h2>Services</h2>
+        <div id="servicesList" class="muted">Loading services…</div>
+
+        <h3 style="margin-top:18px">Filters</h3>
+        <label>Preferred location</label>
+        <input id="preferredLocation" placeholder="e.g., Makati" />
+
+        <label>Indoor / Outdoor</label>
+        <select id="indoorOutdoor">
+          <option value="any">Any</option>
+          <option value="indoor">Indoor</option>
+          <option value="outdoor">Outdoor</option>
+        </select>
+
+        <label>Date from</label>
+        <input id="dateFrom" type="date" />
+        <label>Date to</label>
+        <input id="dateTo" type="date" />
+
+        <label>Preferred time</label>
+        <select id="preferredTime"></select>
+
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+          <button id="checkBtn" class="btn">Check availability</button>
+          <button id="findLocationsBtn" class="btn secondary">Find matching locations</button>
+        </div>
+
+        <div id="status" style="margin-top:12px;color:#ef4444"></div>
+      </div>
+
+      <div>
+        <div class="card" id="availabilityCard" style="display:none">
+          <h3>Available Slots</h3>
+          <div id="slotsArea" class="muted">No results yet.</div>
+        </div>
+
+        <div class="card" id="bookingCard" style="display:none">
+          <h3>Booking — Confirm details</h3>
+          <div id="bookingSummary" class="muted"></div>
+
+          <label>Your name</label>
+          <input id="customerName" placeholder="Full name" />
+          <label>Contact (phone/email)</label>
+          <input id="contact" placeholder="e.g., +63917..." />
+
+          <label>Payment Method</label>
+          <select id="paymentMethod">
+            <option>Card</option>
+            <option>GCash</option>
+          </select>
+
+          <!-- COUPON DROPDOWN -->
+          <label>Coupon</label>
+          <select id="couponCode">
+            <option value="">No coupon</option>
+          </select>
+
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button id="applyCouponBtn" class="btn secondary">Apply Coupon</button>
+            <div id="discountInfo" class="muted" style="align-self:center"></div>
+          </div>
+
+          <button id="confirmBtn" class="btn green" style="margin-top:12px">Confirm & Pay</button>
+        </div>
+
+        <div class="card">
+          <h3>Your bookings (stored)</h3>
+          <div id="bookingsList" class="muted">No bookings yet.</div>
+        </div>
+
+        <div class="card">
+          <h3>Loyalty rewards</h3>
+          <label>Customer name</label>
+          <input id="loyaltyName" placeholder="e.g., Charliz Chan" />
+          <button id="checkLoyaltyBtn" class="btn secondary" style="margin-top:8px;">Check points</button>
+          <div id="loyaltyInfo" class="muted" style="margin-top:8px;">Confirm a booking to earn points.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- External JS file only – no inline script -->
+  <script src="main.js"></script>
+</body>
+</html>
